@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Inventory">
+<meta name="theme-color" content="#6C63FF">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.png">
+<title>Inventory Intelligence</title>
+
+<!-- CDN libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+/* ── CSS Variables ─────────────────────────────────────────── */
+:root {
+  --primary: #6C63FF;
+  --primary-glow: rgba(108,99,255,0.15);
+  --cyan: #22D3EE;
+  --emerald: #34D399;
+  --rose: #FB7185;
+  --amber: #FBBF24;
+  --orange: #F97316;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --nav-h: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+[data-theme="dark"] {
+  --bg: #0D0F14;
+  --surface: #151820;
+  --surface2: #1C2030;
+  --border: #252A3A;
+  --text: #E8EAEE;
+  --text-muted: #6B7280;
+  --text-dim: #9CA3AF;
+  --shadow: rgba(0,0,0,0.4);
+}
+[data-theme="light"] {
+  --bg: #F1F5F9;
+  --surface: #FFFFFF;
+  --surface2: #F8FAFC;
+  --border: #E2E8F0;
+  --text: #0F172A;
+  --text-muted: #64748B;
+  --text-dim: #475569;
+  --shadow: rgba(0,0,0,0.08);
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { -webkit-text-size-adjust:100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh; overflow-x: hidden;
+  transition: background 0.3s, color 0.3s;
+}
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius:3px; }
+
+/* ── Upload Screen ─────────────────────────────────────────── */
+#upload-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(108,99,255,0.15), transparent 70%);
+}
+.upload-box { text-align:center; max-width:480px; width:100%; }
+.upload-logo {
+  font-size:11px; font-weight:700; letter-spacing:4px; color:var(--primary);
+  text-transform:uppercase; margin-bottom:40px; opacity:0.8;
+}
+.upload-title {
+  font-size: clamp(26px,6vw,42px); font-weight:800; line-height:1.1; margin-bottom:14px;
+  background: linear-gradient(135deg, var(--text) 0%, var(--text-muted) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+.upload-sub { color:var(--text-muted); font-size:15px; margin-bottom:40px; line-height:1.6; }
+.drop-zone {
+  border:2px dashed var(--border); border-radius:var(--radius); padding:44px 24px;
+  cursor:pointer; transition:all 0.25s; background:var(--surface); position:relative; overflow:hidden;
+}
+.drop-zone::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(circle at 50% 0%, var(--primary-glow), transparent 60%);
+  opacity:0; transition:opacity 0.3s;
+}
+.drop-zone:hover, .drop-zone.drag { border-color:var(--primary); }
+.drop-zone:hover::before, .drop-zone.drag::before { opacity:1; }
+.drop-icon { font-size:40px; margin-bottom:14px; }
+.drop-label { font-size:15px; color:var(--text-dim); margin-bottom:6px; }
+.drop-label b { color:var(--primary); }
+.drop-note { font-size:12px; color:var(--text-muted); }
+#file-input { display:none; }
+.theme-toggle-upload {
+  position:fixed; top:20px; right:20px;
+  width:40px; height:40px; border-radius:50%; background:var(--surface);
+  border:1px solid var(--border); cursor:pointer; display:flex;
+  align-items:center; justify-content:center; font-size:18px;
+  transition:all 0.2s; z-index:999;
+}
+
+/* ── App Layout ─────────────────────────────────────────────── */
+#app { display:none; }
+
+/* Sidebar — desktop */
+.sidebar {
+  position:fixed; top:0; left:0; width:220px; height:100vh;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; z-index:200; padding:24px 0;
+  transition:background 0.3s;
+}
+.sidebar-logo {
+  font-size:11px; font-weight:700; letter-spacing:3px; color:var(--primary);
+  text-transform:uppercase; padding:0 20px 20px; border-bottom:1px solid var(--border);
+  margin-bottom:12px;
+}
+.sidebar-logo small { display:block; color:var(--text-muted); font-size:10px; letter-spacing:1px; margin-top:3px; font-weight:400; }
+.nav-item {
+  display:flex; align-items:center; gap:10px; padding:10px 20px;
+  font-size:13px; font-weight:500; color:var(--text-muted); cursor:pointer;
+  transition:all 0.18s; border-left:3px solid transparent;
+}
+.nav-item:hover { color:var(--text); background:var(--surface2); }
+.nav-item.active { color:var(--primary); background:var(--primary-glow); border-left-color:var(--primary); }
+.nav-icon { font-size:16px; width:20px; text-align:center; }
+.sidebar-footer { margin-top:auto; padding:16px 20px; border-top:1px solid var(--border); }
+.period-badge {
+  font-size:11px; color:var(--text-muted); background:var(--surface2);
+  border:1px solid var(--border); border-radius:6px; padding:8px 10px; line-height:1.6;
+}
+.period-badge strong { display:block; color:var(--text-dim); font-size:9px; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:2px; }
+.sidebar-actions { display:flex; gap:8px; margin-top:10px; }
+.btn-sm {
+  flex:1; padding:7px 10px; border-radius:6px; font-size:11px; font-weight:500;
+  cursor:pointer; border:1px solid var(--border); background:var(--surface2);
+  color:var(--text-dim); transition:all 0.18s; text-align:center;
+}
+.btn-sm:hover { border-color:var(--primary); color:var(--primary); }
+.btn-sm.primary { background:var(--primary-glow); border-color:var(--primary); color:var(--primary); }
+
+/* Main content */
+.main { margin-left:220px; min-height:100vh; }
+.page { display:none; padding:28px; max-width:1400px; }
+.page.active { display:block; }
+.page-header { margin-bottom:24px; display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.page-title { font-size:22px; font-weight:800; margin-bottom:3px; }
+.page-sub { font-size:13px; color:var(--text-muted); }
+
+/* ── KPI Cards ──────────────────────────────────────────────── */
+.kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+.kpi-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:18px; position:relative; overflow:hidden; transition:border-color 0.2s, background 0.3s;
+}
+.kpi-card::after { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:var(--radius) var(--radius) 0 0; }
+.kpi-card.c-purple::after { background:var(--primary); }
+.kpi-card.c-cyan::after   { background:var(--cyan); }
+.kpi-card.c-rose::after   { background:var(--rose); }
+.kpi-card.c-amber::after  { background:var(--amber); }
+.kpi-label { font-size:10px; color:var(--text-muted); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
+.kpi-value { font-size:26px; font-weight:800; line-height:1; margin-bottom:4px; }
+.kpi-value.c-purple { color:var(--primary); }
+.kpi-value.c-cyan   { color:var(--cyan); }
+.kpi-value.c-rose   { color:var(--rose); }
+.kpi-value.c-amber  { color:var(--amber); }
+.kpi-note { font-size:11px; color:var(--text-muted); }
+
+/* ── Charts ─────────────────────────────────────────────────── */
+.charts-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
+.chart-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:20px; transition:background 0.3s;
+}
+.chart-title { font-size:13px; font-weight:700; margin-bottom:3px; }
+.chart-sub { font-size:11px; color:var(--text-muted); margin-bottom:16px; }
+
+/* ── Tables ─────────────────────────────────────────────────── */
+.table-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  overflow:hidden; margin-bottom:24px; transition:background 0.3s;
+}
+.table-header {
+  padding:16px 20px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+}
+.table-title { font-size:13px; font-weight:700; }
+.search-wrap { position:relative; }
+.search-input {
+  background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm);
+  color:var(--text); padding:8px 12px 8px 30px; font-size:13px; width:200px;
+  outline:none; transition:border-color 0.2s;
+}
+.search-input:focus { border-color:var(--primary); }
+.search-icon { position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:12px; }
+.data-table { width:100%; border-collapse:collapse; font-size:12px; }
+.data-table th {
+  padding:9px 14px; text-align:left; font-size:9px; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--text-muted); background:var(--surface2); font-weight:600;
+  cursor:pointer; white-space:nowrap; user-select:none;
+}
+.data-table th:hover { color:var(--text); }
+.data-table td { padding:9px 14px; border-top:1px solid var(--border); vertical-align:middle; }
+.data-table tr:hover td { background:var(--primary-glow); }
+.badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; }
+.badge-rose    { background:rgba(251,113,133,0.12); color:var(--rose); }
+.badge-amber   { background:rgba(251,191,36,0.12);  color:var(--amber); }
+.badge-orange  { background:rgba(249,115,22,0.12);  color:var(--orange); }
+.badge-emerald { background:rgba(52,211,153,0.12);  color:var(--emerald); }
+.val-neg { color:var(--rose); font-weight:600; }
+.val-pos { color:var(--emerald); font-weight:600; }
+.val-neu { color:var(--text-muted); }
+
+/* ── Filter Pills ───────────────────────────────────────────── */
+.filter-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.pill {
+  padding:5px 13px; border-radius:20px; font-size:12px; font-weight:500;
+  cursor:pointer; border:1px solid var(--border); color:var(--text-muted);
+  transition:all 0.18s; background:var(--surface); white-space:nowrap;
+}
+.pill:hover { border-color:var(--primary); color:var(--text); }
+.pill.active { background:var(--primary-glow); border-color:var(--primary); color:var(--primary); }
+
+/* ── Pagination ─────────────────────────────────────────────── */
+.pagination {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 20px; border-top:1px solid var(--border); font-size:12px; color:var(--text-muted);
+}
+.page-btns { display:flex; gap:5px; }
+.page-btn {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text-dim);
+  width:28px; height:28px; border-radius:6px; cursor:pointer; font-size:12px;
+  transition:all 0.18s; display:flex; align-items:center; justify-content:center;
+}
+.page-btn:hover, .page-btn.active { background:var(--primary-glow); border-color:var(--primary); color:var(--primary); }
+
+/* ── Resa rows ───────────────────────────────────────────────── */
+.resa-grid { display:grid; gap:8px; }
+.resa-row {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:12px 16px; display:grid; grid-template-columns:1fr 160px 80px 80px;
+  align-items:center; gap:14px; transition:border-color 0.2s;
+}
+.resa-row:hover { border-color:var(--primary); }
+.resa-name { font-size:13px; font-weight:500; }
+.resa-wirn { font-size:11px; color:var(--text-muted); margin-top:2px; }
+.resa-bar-wrap { position:relative; height:6px; background:var(--surface2); border-radius:3px; }
+.resa-bar { height:100%; border-radius:3px; }
+.resa-thresh { position:absolute; right:25%; top:-3px; width:2px; height:12px; background:var(--emerald); border-radius:1px; }
+.resa-pct { font-size:14px; font-weight:700; text-align:right; }
+
+/* ── Export button ───────────────────────────────────────────── */
+.export-btn {
+  display:inline-flex; align-items:center; gap:6px; padding:8px 16px;
+  background:var(--primary-glow); border:1px solid var(--primary); border-radius:var(--radius-sm);
+  color:var(--primary); font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s;
+}
+.export-btn:hover { background:var(--primary); color:#fff; }
+.export-btn:disabled { opacity:0.5; cursor:wait; }
+
+/* ── PDF export overlay ──────────────────────────────────────── */
+#pdf-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7);
+  z-index:9999; align-items:center; justify-content:center; flex-direction:column; gap:16px;
+}
+#pdf-overlay.show { display:flex; }
+.pdf-progress { color:#fff; font-size:14px; }
+.pdf-bar-wrap { width:260px; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; }
+.pdf-bar { height:100%; background:var(--primary); border-radius:2px; transition:width 0.3s; }
+
+/* ── Bottom nav — mobile ─────────────────────────────────────── */
+.bottom-nav {
+  display:none; position:fixed; bottom:0; left:0; right:0;
+  height:calc(var(--nav-h) + var(--safe-bottom));
+  background:var(--surface); border-top:1px solid var(--border);
+  z-index:300; padding-bottom:var(--safe-bottom);
+}
+.bottom-nav-inner { display:flex; height:var(--nav-h); }
+.bnav-item {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:4px; cursor:pointer; transition:color 0.18s; color:var(--text-muted); font-size:10px; font-weight:500;
+}
+.bnav-item.active { color:var(--primary); }
+.bnav-icon { font-size:20px; line-height:1; }
+
+/* Mobile top bar */
+.mobile-topbar {
+  display:none; position:fixed; top:0; left:0; right:0; height:56px;
+  background:var(--surface); border-bottom:1px solid var(--border);
+  z-index:200; align-items:center; padding:0 16px; justify-content:space-between;
+}
+.mobile-topbar-title { font-size:14px; font-weight:700; color:var(--primary); letter-spacing:1px; text-transform:uppercase; }
+.topbar-actions { display:flex; gap:8px; }
+.icon-btn {
+  width:36px; height:36px; border-radius:50%; background:var(--surface2);
+  border:1px solid var(--border); cursor:pointer; display:flex; align-items:center;
+  justify-content:center; font-size:16px; transition:all 0.2s;
+}
+.icon-btn:hover { border-color:var(--primary); }
+
+/* ── Spinner ─────────────────────────────────────────────────── */
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--primary); border-radius:50%; animation:spin 0.6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar { display:none; }
+  .main { margin-left:0; padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 8px); }
+  .page { padding:70px 14px 14px; }
+  .bottom-nav { display:block; }
+  .mobile-topbar { display:flex; }
+  .kpi-grid { grid-template-columns:1fr 1fr; gap:10px; }
+  .charts-row { grid-template-columns:1fr; }
+  .resa-row { grid-template-columns:1fr 70px 76px; }
+  .resa-bar-wrap { display:none; }
+  .search-input { width:150px; }
+  .page-header { flex-direction:column; gap:6px; }
+  .table-header { flex-direction:column; align-items:flex-start; }
+}
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns:1fr 1fr; }
+  .kpi-value { font-size:20px; }
+  .data-table { font-size:11px; }
+  .data-table th, .data-table td { padding:7px 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── PDF Export Overlay ───────────────────────────────────── -->
+<div id="pdf-overlay">
+  <div class="pdf-progress" id="pdf-msg">Generazione PDF in corso...</div>
+  <div class="pdf-bar-wrap"><div class="pdf-bar" id="pdf-bar" style="width:0%"></div></div>
+</div>
+
+<!-- ── Theme Toggle (upload screen) ────────────────────────── -->
+<button class="theme-toggle-upload" onclick="toggleTheme()" id="theme-btn-upload">🌙</button>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  UPLOAD SCREEN                                            -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="upload-screen">
+  <div class="upload-box">
+    <div class="upload-logo">Inventory Intelligence</div>
+    <h1 class="upload-title">Analisi inventario<br>in tempo reale</h1>
+    <p class="upload-sub">Importa il report Excel per visualizzare la dashboard con tutte le deviazioni inventariali.</p>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="drop-icon">📊</div>
+      <div class="drop-label"><b>Scegli un file</b> o trascinalo qui</div>
+      <div class="drop-note">Supporta .xls e .xlsx</div>
+    </div>
+    <input type="file" id="file-input" accept=".xls,.xlsx">
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  APP SHELL                                                -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- Sidebar (desktop) -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">Inventory<br>Intelligence <small>Dashboard</small></div>
+    <div class="nav-item active" data-page="dashboard" onclick="showPage('dashboard',this)"><span class="nav-icon">⬡</span><span>Dashboard</span></div>
+    <div class="nav-item" data-page="top-val"  onclick="showPage('top-val',this)"><span class="nav-icon">€</span><span>Top 10 Valore</span></div>
+    <div class="nav-item" data-page="top-qty"  onclick="showPage('top-qty',this)"><span class="nav-icon">📦</span><span>Top 10 Quantità</span></div>
+    <div class="nav-item" data-page="resa"     onclick="showPage('resa',this)"><span class="nav-icon">⚠</span><span>Resa Critica</span></div>
+    <div class="nav-item" data-page="tutti"    onclick="showPage('tutti',this)"><span class="nav-icon">☰</span><span>Tutti gli Item</span></div>
+    <div class="sidebar-footer">
+      <div class="period-badge"><strong>Periodo</strong><span id="period-display">—</span></div>
+      <div class="sidebar-actions">
+        <div class="btn-sm" onclick="resetApp()">↩ Nuovo file</div>
+        <div class="btn-sm primary" onclick="toggleTheme()" id="theme-btn">🌙 Tema</div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="export-btn" style="width:100%;justify-content:center" onclick="exportPDF()">⬇ Esporta PDF</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Mobile topbar -->
+  <div class="mobile-topbar">
+    <div class="mobile-topbar-title">Inventory</div>
+    <div class="topbar-actions">
+      <div class="icon-btn" onclick="toggleTheme()" id="theme-btn-mobile">🌙</div>
+      <div class="icon-btn" onclick="exportPDF()">⬇</div>
+      <div class="icon-btn" onclick="resetApp()">↩</div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub" id="store-display">Panoramica deviazioni inventariali</div>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card c-purple"><div class="kpi-label">Item Analizzati</div><div class="kpi-value c-purple" id="kpi-tot">—</div><div class="kpi-note">attivi e filtrati</div></div>
+        <div class="kpi-card c-cyan"><div class="kpi-label">Deviazione €</div><div class="kpi-value c-cyan" id="kpi-dev">—</div><div class="kpi-note">somma diff. valore</div></div>
+        <div class="kpi-card c-rose"><div class="kpi-label">In Negativo</div><div class="kpi-value c-rose" id="kpi-neg">—</div><div class="kpi-note">item sotto zero</div></div>
+        <div class="kpi-card c-amber"><div class="kpi-label">Resa &lt;75%</div><div class="kpi-value c-amber" id="kpi-low">—</div><div class="kpi-note">item critici</div></div>
+      </div>
+      <div class="charts-row">
+        <div class="chart-card"><div class="chart-title">Top 10 – Deviazione Valore (€)</div><div class="chart-sub">Maggiori scostamenti economici</div><canvas id="chart-val" height="240"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Top 10 – Deviazione Quantità</div><div class="chart-sub">Maggiori scostamenti in unità</div><canvas id="chart-qty" height="240"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Distribuzione Resa %</div><div class="chart-sub">Item per fascia di rendimento</div><div style="max-width:280px;margin:0 auto"><canvas id="chart-donut" height="200"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Resa Critica (top 15)</div><div class="chart-sub">Item sotto soglia 75%, ordinati</div><canvas id="chart-resa" height="200"></canvas></div>
+      </div>
+    </div>
+
+    <!-- TOP 10 VALORE -->
+    <div class="page" id="page-top-val">
+      <div class="page-header"><div><div class="page-title">Top 10 — Valore (€)</div><div class="page-sub">Maggiore deviazione economica in valore assoluto</div></div></div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">Classifica deviazioni</div></div>
+        <table class="data-table" id="tbl-top-val"><thead><tr><th>#</th><th>Descrizione</th><th>WIRN</th><th>UOM</th><th>Diff Qtà</th><th>Diff Val (€)</th><th>Resa %</th><th>Alert</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- TOP 10 QTÀ -->
+    <div class="page" id="page-top-qty">
+      <div class="page-header"><div><div class="page-title">Top 10 — Quantità</div><div class="page-sub">Maggiore deviazione in unità di misura</div></div></div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">Classifica deviazioni</div></div>
+        <table class="data-table" id="tbl-top-qty"><thead><tr><th>#</th><th>Descrizione</th><th>WIRN</th><th>UOM</th><th>Diff Qtà</th><th>Diff Val (€)</th><th>Resa %</th><th>Alert</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- RESA CRITICA -->
+    <div class="page" id="page-resa">
+      <div class="page-header"><div><div class="page-title">Resa Critica</div><div class="page-sub">Item con resa inferiore al 75%, ordinati per resa crescente</div></div></div>
+      <div class="filter-row">
+        <div class="pill active" onclick="filterResa(this,'all')">Tutti</div>
+        <div class="pill" onclick="filterResa(this,'critico')">🔴 Critico &lt;50%</div>
+        <div class="pill" onclick="filterResa(this,'alto')">🟠 Alto 50–64%</div>
+        <div class="pill" onclick="filterResa(this,'attenzione')">🟡 Attenzione 65–74%</div>
+      </div>
+      <div class="resa-grid" id="resa-grid"></div>
+    </div>
+
+    <!-- TUTTI -->
+    <div class="page" id="page-tutti">
+      <div class="page-header"><div><div class="page-title">Tutti gli Item</div><div class="page-sub">Ricerca su <span id="count-tutti">—</span> item analizzati</div></div></div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Inventario completo</div>
+          <div class="search-wrap"><span class="search-icon">🔍</span><input class="search-input" id="search-tutti" placeholder="Cerca..." oninput="renderTutti()"></div>
+        </div>
+        <div class="filter-row" style="padding:8px 16px 0">
+          <div class="pill active" onclick="filterTutti(this,'all')">Tutti</div>
+          <div class="pill" onclick="filterTutti(this,'neg')">Negativi</div>
+          <div class="pill" onclick="filterTutti(this,'pos')">Positivi</div>
+          <div class="pill" onclick="filterTutti(this,'low-resa')">Resa &lt;75%</div>
+        </div>
+        <table class="data-table" id="tbl-tutti">
+          <thead><tr>
+            <th onclick="sortTutti('desc')">Descrizione ↕</th>
+            <th onclick="sortTutti('wirn')">WIRN ↕</th>
+            <th onclick="sortTutti('uom')">UOM</th>
+            <th onclick="sortTutti('diff_qty')">Diff Qtà ↕</th>
+            <th onclick="sortTutti('diff_val')">Diff Val (€) ↕</th>
+            <th onclick="sortTutti('resa')">Resa % ↕</th>
+            <th>Alert</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="pagination"><span id="pag-info">—</span><div class="page-btns" id="pag-btns"></div></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- Bottom nav (mobile) -->
+  <nav class="bottom-nav">
+    <div class="bottom-nav-inner">
+      <div class="bnav-item active" data-page="dashboard" onclick="showPage('dashboard',this)"><span class="bnav-icon">⬡</span>Home</div>
+      <div class="bnav-item" data-page="top-val"  onclick="showPage('top-val',this)"><span class="bnav-icon">€</span>Valore</div>
+      <div class="bnav-item" data-page="top-qty"  onclick="showPage('top-qty',this)"><span class="bnav-icon">📦</span>Quantità</div>
+      <div class="bnav-item" data-page="resa"     onclick="showPage('resa',this)"><span class="bnav-icon">⚠</span>Resa</div>
+      <div class="bnav-item" data-page="tutti"    onclick="showPage('tutti',this)"><span class="bnav-icon">☰</span>Tutti</div>
+    </div>
+  </nav>
+
+</div><!-- /app -->
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  JAVASCRIPT                                               -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<script>
+// ── PWA ──────────────────────────────────────────────────────
+//if ('serviceWorker' in navigator) {
+//  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+//}
+
+// ── State ─────────────────────────────────────────────────────
+let DATA = [], META = {};
+let tutti_filter = 'all', tutti_sort = { key:'diff_val', dir:-1 }, tutti_page = 1;
+const PER_PAGE = 25;
+let resa_filter = 'all';
+let currentPage = 'dashboard';
+const WHITELIST = ['OLIO F212 2X7,5L PET'];
+let charts = {};
+let isDark = true;
+
+// ── Theme ─────────────────────────────────────────────────────
+function toggleTheme() {
+  isDark = !isDark;
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  const icon = isDark ? '🌙' : '☀️';
+  ['theme-btn','theme-btn-mobile','theme-btn-upload'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = icon + (id === 'theme-btn' ? ' Tema' : '');
+  });
+  if (Object.keys(charts).length) setTimeout(renderCharts, 100);
+}
+
+// ── File handling ─────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); readFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => readFile(e.target.files[0]));
+
+function readFile(file) {
+  if (!file) return;
+  dropZone.innerHTML = '<div class="spinner"></div><div style="margin-top:12px;color:var(--text-muted);font-size:13px">Analisi in corso...</div>';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type:'array' });
+      parseSheet(wb.Sheets[wb.SheetNames[0]], file.name);
+    } catch(err) { alert('Errore: ' + err.message); location.reload(); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseSheet(sh, filename) {
+  const rows = XLSX.utils.sheet_to_json(sh, { header:1, defval:'' });
+  let location='', store='', reportTitle='';
+  for (let i=0; i<12; i++) {
+    const r = rows[i]||[];
+    for (let j=0; j<r.length; j++) {
+      const v = String(r[j]).trim();
+      if (v.includes('Report Variazione') && v.includes('Inventario')) reportTitle = v;
+      if (i===1 && j===6) location = v;
+      if (i===2 && j===6) store = v;
+    }
+  }
+  const pm = reportTitle.match(/(\d{2}\/\d{2}\/\d{4})-(\d{2}\/\d{2}\/\d{4})/);
+  META = { period: pm ? `${pm[1]} – ${pm[2]}` : filename, location, store };
+
+  const toNum = v => { const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?null:n; };
+  const raw = [];
+  for (let i=11; i<rows.length-2; i++) {
+    const r=rows[i];
+    const wirn=String(r[0]||'').trim();
+    if (!wirn) continue;
+    raw.push({ wirn, stato:String(r[2]||'').trim(), desc:String(r[4]||'').trim(),
+               uom:String(r[7]||'').trim(), diff_qty:toNum(r[21]), diff_val:toNum(r[22]), resa:toNum(r[30]) });
+  }
+
+  const wl = raw.filter(d => WHITELIST.includes(d.desc) && d.stato==='Active');
+  let filtered = raw.filter(d => {
+    if (d.stato!=='Active') return false;
+    if (d.desc.toUpperCase().includes('DUMMY')) return false;
+    if (WHITELIST.includes(d.desc)) return false;
+    if (d.resa===null||d.resa===0) return false;
+    return true;
+  });
+  wl.forEach(w => { if (!filtered.find(f=>f.desc===w.desc)) filtered.push(w); });
+  DATA = filtered;
+  initApp();
+}
+
+// ── Init ──────────────────────────────────────────────────────
+function initApp() {
+  document.getElementById('upload-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('period-display').textContent = META.period;
+  document.getElementById('store-display').textContent = `${META.location} · ${META.store}`;
+  renderKPIs(); renderCharts(); renderTopVal(); renderTopQty(); renderResa(); renderTutti();
+}
+function resetApp() { location.reload(); }
+
+// ── Navigation ────────────────────────────────────────────────
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item,.bnav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById(`page-${id}`).classList.add('active');
+  document.querySelectorAll(`[data-page="${id}"]`).forEach(n=>n.classList.add('active'));
+  currentPage = id;
+}
+
+// ── KPIs ──────────────────────────────────────────────────────
+function renderKPIs() {
+  const tot = DATA.length;
+  const dev = DATA.reduce((s,d)=>s+(d.diff_val||0),0);
+  const neg = DATA.filter(d=>(d.diff_val||0)<0).length;
+  const low = DATA.filter(d=>(d.resa||0)>0&&(d.resa||0)<75).length;
+  document.getElementById('kpi-tot').textContent = tot;
+  document.getElementById('kpi-dev').textContent = (dev>=0?'+':'')+'€'+Math.abs(dev).toFixed(0);
+  document.getElementById('kpi-neg').textContent = neg;
+  document.getElementById('kpi-low').textContent = low;
+  document.getElementById('count-tutti').textContent = tot;
+}
+
+// ── Charts ────────────────────────────────────────────────────
+function mkChart(id, cfg) { if(charts[id]) charts[id].destroy(); charts[id]=new Chart(document.getElementById(id),cfg); }
+const gridC = () => isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+const tickC  = () => isDark ? '#6B7280' : '#94A3B8';
+const short  = s => s.length>22 ? s.slice(0,22)+'…' : s;
+
+function renderCharts() {
+  const sv = [...DATA].filter(d=>d.diff_val!=null).sort((a,b)=>Math.abs(b.diff_val)-Math.abs(a.diff_val)).slice(0,10);
+  const sq = [...DATA].filter(d=>d.diff_qty!=null).sort((a,b)=>Math.abs(b.diff_qty)-Math.abs(a.diff_qty)).slice(0,10);
+  const barCfg = (data, col) => ({
+    type:'bar', data:{
+      labels: data.map(d=>short(d.desc)),
+      datasets:[{ data:data.map(d=>d[col]), backgroundColor:data.map(d=>d[col]<0?'#FB7185':'#34D399'), borderRadius:4, borderSkipped:false }]
+    },
+    options:{ indexAxis:'y', responsive:true, plugins:{legend:{display:false}},
+      scales:{ x:{grid:{color:gridC()},ticks:{color:tickC()}}, y:{grid:{display:false},ticks:{color:tickC(),font:{size:10}}} } }
+  });
+  mkChart('chart-val', barCfg(sv,'diff_val'));
+  mkChart('chart-qty', barCfg(sq,'diff_qty'));
+
+  const ok=DATA.filter(d=>(d.resa||0)>=75).length, lo=DATA.filter(d=>(d.resa||0)>0&&(d.resa||0)<75&&(d.resa||0)>=50).length, cr=DATA.filter(d=>(d.resa||0)>0&&(d.resa||0)<50).length;
+  mkChart('chart-donut',{type:'doughnut',data:{labels:['OK ≥75%','50–74%','<50% Critico'],datasets:[{data:[ok,lo,cr],backgroundColor:['#34D399','#FBBF24','#FB7185'],borderWidth:0}]},
+    options:{cutout:'68%',responsive:true,plugins:{legend:{position:'bottom',labels:{padding:14,font:{size:10},color:tickC()}}}}});
+
+  const rl=[...DATA].filter(d=>d.resa!=null&&d.resa>0&&d.resa<75).sort((a,b)=>a.resa-b.resa).slice(0,15);
+  mkChart('chart-resa',{type:'bar',data:{labels:rl.map(d=>short(d.desc)),datasets:[{data:rl.map(d=>d.resa),backgroundColor:rl.map(d=>d.resa<50?'#FB7185':d.resa<65?'#F97316':'#FBBF24'),borderRadius:4,borderSkipped:false}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{min:0,max:80,grid:{color:gridC()},ticks:{color:tickC(),callback:v=>v+'%'}},y:{grid:{display:false},ticks:{color:tickC(),font:{size:10}}}}}});
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function alertBadge(r) {
+  if (r===null||r===undefined||r===0) return '<span class="badge badge-emerald">N/D</span>';
+  if (r<50)  return '<span class="badge badge-rose">CRITICO</span>';
+  if (r<65)  return '<span class="badge badge-orange">ALTO</span>';
+  if (r<75)  return '<span class="badge badge-amber">ATTENZIONE</span>';
+  return '<span class="badge badge-emerald">OK</span>';
+}
+function fmtV(v,pre='') {
+  if (v===null||v===undefined) return '<span class="val-neu">—</span>';
+  const c=v<0?'val-neg':v>0?'val-pos':'val-neu', s=v>0?'+':'';
+  return `<span class="${c}">${s}${pre}${v.toFixed(2)}</span>`;
+}
+function fmtR(v) {
+  if (!v) return '<span class="val-neu">N/D</span>';
+  return `<span class="${v<75?'val-neg':'val-pos'}">${v.toFixed(1)}%</span>`;
+}
+function topRow(d,i) {
+  return `<tr><td><b>${i+1}</b></td><td>${d.desc}</td><td style="color:var(--text-muted);font-size:11px">${d.wirn}</td><td style="color:var(--text-muted)">${d.uom}</td><td>${fmtV(d.diff_qty)}</td><td>${fmtV(d.diff_val,'€')}</td><td>${fmtR(d.resa)}</td><td>${alertBadge(d.resa)}</td></tr>`;
+}
+
+// ── Top tables ────────────────────────────────────────────────
+function renderTopVal() {
+  const top=[...DATA].filter(d=>d.diff_val!=null).sort((a,b)=>Math.abs(b.diff_val)-Math.abs(a.diff_val)).slice(0,10);
+  document.querySelector('#tbl-top-val tbody').innerHTML=top.map(topRow).join('');
+}
+function renderTopQty() {
+  const top=[...DATA].filter(d=>d.diff_qty!=null).sort((a,b)=>Math.abs(b.diff_qty)-Math.abs(a.diff_qty)).slice(0,10);
+  document.querySelector('#tbl-top-qty tbody').innerHTML=top.map(topRow).join('');
+}
+
+// ── Resa ──────────────────────────────────────────────────────
+function filterResa(el,f) { document.querySelectorAll('#page-resa .pill').forEach(p=>p.classList.remove('active')); el.classList.add('active'); resa_filter=f; renderResa(); }
+function renderResa() {
+  let items=[...DATA].filter(d=>d.resa!=null&&d.resa>0&&d.resa<75).sort((a,b)=>a.resa-b.resa);
+  if(resa_filter==='critico') items=items.filter(d=>d.resa<50);
+  if(resa_filter==='alto') items=items.filter(d=>d.resa>=50&&d.resa<65);
+  if(resa_filter==='attenzione') items=items.filter(d=>d.resa>=65);
+  const bc=v=>v<50?'#FB7185':v<65?'#F97316':'#FBBF24';
+  document.getElementById('resa-grid').innerHTML=items.map(d=>`
+    <div class="resa-row">
+      <div><div class="resa-name">${d.desc}</div><div class="resa-wirn">${d.wirn} · ${d.uom}</div></div>
+      <div class="resa-bar-wrap"><div class="resa-bar" style="width:${Math.min(d.resa,100)}%;background:${bc(d.resa)}"></div><div class="resa-thresh"></div></div>
+      <div class="resa-pct" style="color:${bc(d.resa)}">${d.resa.toFixed(1)}%</div>
+      <div>${alertBadge(d.resa)}</div>
+    </div>`).join('');
+}
+
+// ── Tutti ─────────────────────────────────────────────────────
+function filterTutti(el,f){ document.querySelectorAll('#page-tutti .pill').forEach(p=>p.classList.remove('active')); el.classList.add('active'); tutti_filter=f; tutti_page=1; renderTutti(); }
+function sortTutti(k){ if(tutti_sort.key===k) tutti_sort.dir*=-1; else{tutti_sort.key=k;tutti_sort.dir=-1;} tutti_page=1; renderTutti(); }
+function renderTutti(){
+  const q=document.getElementById('search-tutti').value.toLowerCase();
+  let items=[...DATA];
+  if(q) items=items.filter(d=>d.desc.toLowerCase().includes(q)||d.wirn.toLowerCase().includes(q));
+  if(tutti_filter==='neg') items=items.filter(d=>(d.diff_val||0)<0);
+  if(tutti_filter==='pos') items=items.filter(d=>(d.diff_val||0)>0);
+  if(tutti_filter==='low-resa') items=items.filter(d=>(d.resa||0)>0&&(d.resa||0)<75);
+  const {key,dir}=tutti_sort;
+  items.sort((a,b)=>{const av=a[key]??'',bv=b[key]??'';return typeof av==='string'?av.localeCompare(bv)*dir:(av-bv)*dir;});
+  const total=items.length, totalP=Math.max(1,Math.ceil(total/PER_PAGE));
+  if(tutti_page>totalP) tutti_page=1;
+  const slice=items.slice((tutti_page-1)*PER_PAGE,tutti_page*PER_PAGE);
+  document.getElementById('pag-info').textContent=`${(tutti_page-1)*PER_PAGE+1}–${Math.min(tutti_page*PER_PAGE,total)} di ${total}`;
+  document.querySelector('#tbl-tutti tbody').innerHTML=slice.map(d=>`<tr><td>${d.desc}</td><td style="color:var(--text-muted);font-size:11px">${d.wirn}</td><td style="color:var(--text-muted)">${d.uom}</td><td>${fmtV(d.diff_qty)}</td><td>${fmtV(d.diff_val,'€')}</td><td>${fmtR(d.resa)}</td><td>${alertBadge(d.resa)}</td></tr>`).join('');
+  const btns=document.getElementById('pag-btns'); btns.innerHTML='';
+  for(let p=1;p<=totalP;p++){
+    if(totalP>7&&p>3&&p<totalP-1&&Math.abs(p-tutti_page)>1){if(p===4)btns.innerHTML+='<span style="padding:0 3px;color:var(--text-muted)">…</span>';continue;}
+    const b=document.createElement('button'); b.className='page-btn'+(p===tutti_page?' active':'');
+    b.textContent=p; b.onclick=()=>{tutti_page=p;renderTutti();}; btns.appendChild(b);
+  }
+}
+
+// ── PDF Export ────────────────────────────────────────────────
+async function exportPDF() {
+  if (!DATA.length) return;
+  const overlay = document.getElementById('pdf-overlay');
+  const bar = document.getElementById('pdf-bar');
+  const msg = document.getElementById('pdf-msg');
+  overlay.classList.add('show');
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+  const primary='#6C63FF', rose='#FB7185', emerald='#34D399', amber='#FBBF24', muted='#6B7280';
+
+  const setProgress = (pct, text) => { bar.style.width=pct+'%'; msg.textContent=text; };
+
+  // ── Helper functions ──────────────────────────────────────
+  function drawHeader(title, sub) {
+    pdf.setFillColor(13,15,20); pdf.rect(0,0,W,H,'F');
+    pdf.setFillColor(108,99,255); pdf.rect(0,0,W,1.5,'F');
+    pdf.setTextColor(108,99,255); pdf.setFontSize(8); pdf.setFont('helvetica','bold');
+    pdf.text('INVENTORY INTELLIGENCE', m, 12);
+    pdf.setTextColor(232,234,238); pdf.setFontSize(16); pdf.text(title, m, 22);
+    pdf.setTextColor(107,114,128); pdf.setFontSize(9); pdf.setFont('helvetica','normal');
+    pdf.text(sub, m, 28);
+    pdf.setTextColor(107,114,128); pdf.setFontSize(8);
+    pdf.text(`${META.location} · ${META.store} · ${META.period}`, m, 34);
+    pdf.setDrawColor(37,42,58); pdf.setLineWidth(0.3); pdf.line(m,37,W-m,37);
+    return 43;
+  }
+
+  function drawFooter(pageN) {
+    pdf.setDrawColor(37,42,58); pdf.setLineWidth(0.3); pdf.line(m,H-10,W-m,H-10);
+    pdf.setTextColor(107,114,128); pdf.setFontSize(7); pdf.setFont('helvetica','normal');
+    pdf.text(`Report Variazione Inventario · ${META.period}`, m, H-6);
+    pdf.text(`Pagina ${pageN}`, W-m, H-6, {align:'right'});
+  }
+
+  function kpiBox(x, y, w, h, label, value, color) {
+    pdf.setFillColor(21,24,32); pdf.roundedRect(x,y,w,h,2,2,'F');
+    pdf.setFillColor(...hexToRgb(color)); pdf.rect(x,y,w,0.8,'F');
+    pdf.setTextColor(107,114,128); pdf.setFontSize(6.5); pdf.setFont('helvetica','bold');
+    pdf.text(label.toUpperCase(), x+4, y+7);
+    pdf.setTextColor(...hexToRgb(color)); pdf.setFontSize(14); pdf.setFont('helvetica','bold');
+    pdf.text(String(value), x+4, y+16);
+  }
+
+  function drawTable(startY, headers, rows, colWidths, colAligns=[]) {
+    let y = startY;
+    const rowH = 7, headerH = 8;
+    // Header
+    pdf.setFillColor(30,32,48); pdf.rect(m, y, W-2*m, headerH, 'F');
+    pdf.setFillColor(108,99,255); pdf.rect(m, y, W-2*m, 0.5, 'F');
+    pdf.setTextColor(232,234,238); pdf.setFontSize(7); pdf.setFont('helvetica','bold');
+    let x = m+2;
+    headers.forEach((h,i) => { pdf.text(h, x, y+5.5, {align: colAligns[i]||'left'}); x+=colWidths[i]; });
+    y += headerH;
+    rows.forEach((row, ri) => {
+      if (y > H-20) { drawFooter(pdf.internal.pages.length); pdf.addPage(); pdf.setFillColor(13,15,20); pdf.rect(0,0,W,H,'F'); y=20; }
+      if (ri%2===0) { pdf.setFillColor(21,24,32); pdf.rect(m,y,W-2*m,rowH,'F'); }
+      pdf.setDrawColor(37,42,58); pdf.setLineWidth(0.15); pdf.line(m,y+rowH,W-m,y+rowH);
+      x = m+2;
+      row.forEach((cell,i) => {
+        const {text,color} = typeof cell==='object' ? cell : {text:cell,color:null};
+        if (color) pdf.setTextColor(...hexToRgb(color)); else pdf.setTextColor(200,202,206);
+        pdf.setFontSize(7.5); pdf.setFont('helvetica', color?'bold':'normal');
+        pdf.text(String(text||'—'), x, y+4.8, {align: colAligns[i]||'left', maxWidth: colWidths[i]-2});
+        x += colWidths[i];
+      });
+      y += rowH;
+    });
+    return y + 4;
+  }
+
+  function hexToRgb(hex) {
+    const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+    return [r,g,b];
+  }
+  function valColor(v) { return v<0 ? rose : v>0 ? emerald : muted; }
+  function resaColor(v) { return !v||v===0 ? muted : v<50 ? rose : v<75 ? amber : emerald; }
+  function alertText(v) { if(!v||v===0) return 'N/D'; if(v<50) return 'CRITICO'; if(v<65) return 'ALTO'; if(v<75) return 'ATTENZIONE'; return 'OK'; }
+
+  // ── Capture charts as images ──────────────────────────────
+  async function chartImg(id) {
+    const canvas = document.getElementById(id);
+    return canvas ? canvas.toDataURL('image/png', 0.95) : null;
+  }
+
+  // ══════════ LANDSCAPE SETUP ══════════
+  // A4 landscape: 297 x 210 mm — swap W and H
+  const W=297, H=210, m=14;
+
+  // ══════════ PAGE 1: Dashboard ══════════
+  setProgress(10, 'Pagina 1: Dashboard...');
+  let y = drawHeader('Dashboard', 'Panoramica generale deviazioni inventariali');
+
+  const tot=DATA.length, dev=DATA.reduce((s,d)=>s+(d.diff_val||0),0), neg=DATA.filter(d=>(d.diff_val||0)<0).length, low=DATA.filter(d=>(d.resa||0)>0&&(d.resa||0)<75).length;
+  const kw=(W-2*m-9)/4;
+  kpiBox(m,          y, kw, 22, 'Item Analizzati', tot,      primary);
+  kpiBox(m+kw+3,     y, kw, 22, 'Deviazione €',   (dev>=0?'+':'')+'€'+Math.abs(dev).toFixed(0), '#22D3EE');
+  kpiBox(m+kw*2+6,   y, kw, 22, 'In Negativo',    neg,      rose);
+  kpiBox(m+kw*3+9,   y, kw, 22, 'Resa < 75%',     low,      amber);
+  y += 28;
+
+  // Charts — 4 in a row on landscape page
+  setProgress(25, 'Cattura grafici...');
+  await new Promise(r=>setTimeout(r,400));
+  const imgVal   = await chartImg('chart-val');
+  const imgQty   = await chartImg('chart-qty');
+  const imgDonut = await chartImg('chart-donut');
+  const imgResa  = await chartImg('chart-resa');
+
+  const cw4 = (W-2*m-9)/4;
+  const chH = H - y - 18;
+  if(imgVal)   pdf.addImage(imgVal,   'PNG', m,              y, cw4, chH);
+  if(imgQty)   pdf.addImage(imgQty,   'PNG', m+cw4+3,        y, cw4, chH);
+  if(imgDonut) pdf.addImage(imgDonut, 'PNG', m+cw4*2+6,      y, cw4, chH);
+  if(imgResa)  pdf.addImage(imgResa,  'PNG', m+cw4*3+9,      y, cw4, chH);
+  drawFooter(1);
+
+  // ══════════ PAGE 2: Top 10 Valore ══════════
+  setProgress(40, 'Pagina 2: Top 10 Valore...');
+  pdf.addPage(); pdf.setFillColor(13,15,20); pdf.rect(0,0,W,H,'F');
+  y = drawHeader('Top 10 — Deviazione per Valore (€)', 'Item con maggiore scostamento economico in valore assoluto');
+
+  const top_val = [...DATA].filter(d=>d.diff_val!=null).sort((a,b)=>Math.abs(b.diff_val)-Math.abs(a.diff_val)).slice(0,10);
+  // Wide columns — plenty of space in landscape
+  const headers1 = ['#','Descrizione','WIRN','UOM','Diff Qtà','Diff Valore €','Resa %','Alert'];
+  const cw1 =      [9,   90,           28,    14,   24,        30,             20,      24];
+  const makeRow = (d,i) => [
+    {text:String(i+1), color:'#9CA3AF'},
+    {text:d.desc.slice(0,45)},
+    {text:d.wirn,  color:'#6B7280'},
+    {text:d.uom,   color:'#6B7280'},
+    {text:(d.diff_qty!=null?(d.diff_qty>0?'+':'')+d.diff_qty.toFixed(1):'—'),  color:d.diff_qty!=null?valColor(d.diff_qty):muted},
+    {text:(d.diff_val!=null?(d.diff_val>0?'+':'')+'€ '+d.diff_val.toFixed(2):'—'), color:d.diff_val!=null?valColor(d.diff_val):muted},
+    {text:(d.resa?d.resa.toFixed(1)+'%':'N/D'), color:resaColor(d.resa)},
+    {text:alertText(d.resa), color:resaColor(d.resa)},
+  ];
+  drawTable(y, headers1, top_val.map(makeRow), cw1);
+  drawFooter(2);
+
+  // ══════════ PAGE 3: Top 10 Quantità ══════════
+  setProgress(60, 'Pagina 3: Top 10 Quantità...');
+  pdf.addPage(); pdf.setFillColor(13,15,20); pdf.rect(0,0,W,H,'F');
+  y = drawHeader('Top 10 — Deviazione per Quantità', 'Item con maggiore scostamento in unità di misura');
+
+  const top_qty = [...DATA].filter(d=>d.diff_qty!=null).sort((a,b)=>Math.abs(b.diff_qty)-Math.abs(a.diff_qty)).slice(0,10);
+  drawTable(y, headers1, top_qty.map(makeRow), cw1);
+  drawFooter(3);
+
+  // ══════════ PAGE 4: Resa Critica ══════════
+  setProgress(80, 'Pagina 4: Resa Critica...');
+  pdf.addPage(); pdf.setFillColor(13,15,20); pdf.rect(0,0,W,H,'F');
+  y = drawHeader('Resa Critica — Sotto il 75%', 'Item ordinati per resa crescente · Soglia: 75%');
+
+  const resa_items = [...DATA].filter(d=>d.resa!=null&&d.resa>0&&d.resa<75).sort((a,b)=>a.resa-b.resa).slice(0,25);
+  drawTable(y, headers1, resa_items.map(makeRow), cw1);
+  drawFooter(4);
+
+  // ── Save ──────────────────────────────────────────────────
+  setProgress(95, 'Salvataggio...');
+  await new Promise(r=>setTimeout(r,200));
+  const dateStr = new Date().toISOString().slice(0,10);
+  pdf.save(`Report_Inventario_${dateStr}.pdf`);
+  overlay.classList.remove('show');
+  bar.style.width='0%';
+}
+</script>
+</body>
+</html>
